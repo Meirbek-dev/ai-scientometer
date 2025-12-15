@@ -1,0 +1,89 @@
+# AI Scientometer - Docker Compose Production Configuration
+# Deploy with: docker compose up -d
+# For SSL: use nginx/nginx.conf
+# Without SSL: use nginx/nginx-no-ssl.conf
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:8
+    container_name: scientometer-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: scientometer
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - scientometer-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Python FastAPI Backend
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: scientometer-api
+    restart: unless-stopped
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - DATABASE_NAME=scientometer
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - api_datasets:/app/datasets
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - scientometer-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # React/Vite Frontend
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: scientometer-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - scientometer-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: scientometer-nginx
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    volumes:
+      # Use nginx-no-ssl.conf for initial setup without SSL
+      # Switch to nginx.conf when SSL certificates are ready
+      - ./nginx/nginx-no-ssl.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/certbot:/var/www/certbot:ro
+    depends_on:
+      - api
+      - web
+    networks:
+      - scientometer-network
+
+volumes:
+  mongodb_data:
+    driver: local
+  api_datasets:
+    driver: local
+
+networks:
+  scientometer-network:
+    driver: bridge
