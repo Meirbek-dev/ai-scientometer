@@ -2,12 +2,12 @@
 # Multi-stage build for React/Vite application
 
 # Stage 1: Build
-FROM node:24-alpine AS builder
+FROM node:25-alpine AS builder
 
 WORKDIR /app
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN npm install -g pnpm@latest
 
 # Copy dependency files
 COPY package.json pnpm-lock.yaml ./
